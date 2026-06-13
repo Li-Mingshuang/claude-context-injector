@@ -24,7 +24,7 @@ Claude reads this as background context at the start of every message — like g
 ## Install
 
 ```bash
-git clone https://github.com/li-mingshuang/claude-context-injector
+git clone https://github.com/Li-Mingshuang/claude-context-injector
 cd claude-context-injector
 bash install.sh
 ```
