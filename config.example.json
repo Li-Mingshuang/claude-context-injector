@@ -1,0 +1,8 @@
+{
+  "time": true,
+  "weather": false,
+  "weather_location": "",
+  "git": true,
+  "battery": false,
+  "cwd": false
+}
