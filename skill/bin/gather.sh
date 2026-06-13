@@ -1,7 +1,7 @@
 #!/bin/bash
-# claude-context-injector: gather.sh
-# Collects context from enabled sources and outputs JSON for Claude Code's
-# UserPromptSubmit hook to inject as additionalContext.
+# claude-context-injector — gather.sh
+# Called by UserPromptSubmit hook. Reads config.json and collects
+# enabled context sources, then outputs JSON for Claude Code to inject.
 
 CONFIG="$HOME/.claude-context-injector/config.json"
 
@@ -20,7 +20,7 @@ fi
 if [ "$(get_config weather)" = "true" ]; then
   LOCATION=$(get_config weather_location)
   [ "$LOCATION" = "false" ] && LOCATION=""
-  W=$(curl -s --max-time 3 "wttr.in/${LOCATION}?format=3" 2>/dev/null)
+  W=$(curl -s --max-time 2 "wttr.in/${LOCATION}?format=3" 2>/dev/null)
   [ -n "$W" ] && LINES+=("Weather: $W")
 fi
 
@@ -47,10 +47,22 @@ if [ "$(get_config cwd)" = "true" ]; then
   LINES+=("Working directory: $(pwd)")
 fi
 
-# ── Build context and output JSON ─────────────────────────────────────────────
-if [ ${#LINES[@]} -eq 0 ]; then
-  exit 0
+# ── Custom sources (from config.custom array) ─────────────────────────────────
+CUSTOM_COUNT=$(jq -r '.custom | length // 0' "$CONFIG" 2>/dev/null || echo "0")
+if [ "$CUSTOM_COUNT" -gt 0 ]; then
+  for i in $(seq 0 $((CUSTOM_COUNT - 1))); do
+    LABEL=$(jq -r ".custom[$i].label" "$CONFIG" 2>/dev/null)
+    CMD=$(jq -r ".custom[$i].command" "$CONFIG" 2>/dev/null)
+    ENABLED=$(jq -r ".custom[$i].enabled // true" "$CONFIG" 2>/dev/null)
+    if [ "$ENABLED" = "true" ] && [ -n "$CMD" ] && [ "$CMD" != "null" ]; then
+      OUT=$(eval "$CMD" 2>/dev/null | head -1)
+      [ -n "$OUT" ] && LINES+=("${LABEL}: ${OUT}")
+    fi
+  done
 fi
+
+# ── Output JSON ───────────────────────────────────────────────────────────────
+[ ${#LINES[@]} -eq 0 ] && exit 0
 
 CTX=$(printf '%s\n' "${LINES[@]}")
 

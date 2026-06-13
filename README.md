@@ -1,94 +1,76 @@
 # claude-context-injector
 
-Automatically injects useful context into every Claude Code conversation via the `UserPromptSubmit` hook — no manual prompting needed.
+自动向每条 Claude Code 对话注入上下文信息（时间、天气、Git 状态等）。
 
-## What it injects
+不用每次说"现在几点"、"我在哪个分支"——Claude 已经知道了。
 
-| Source | Example output | Default |
-|--------|---------------|---------|
-| `time` | `Current time: 2026-06-13 22:30:00 CST` | ✅ on |
-| `weather` | `Weather: Beijing: ⛅️ +28°C` | off |
-| `git` | `Git: branch=main (3 uncommitted changes)` | ✅ on |
-| `battery` | `Battery: 82% discharging` | off |
-| `cwd` | `Working directory: /Users/you/project` | off |
+## 效果演示
 
-Claude reads this as background context at the start of every message — like giving it a dashboard of your current state.
+Claude 在处理你的消息前，已经悄悄收到了：
 
-## Requirements
+```
+Current time: 2026-06-13 22:34:51 CST
+Weather: Beijing: ⛅️ +28°C
+Git: branch=main (3 uncommitted changes)
+```
 
-- Claude Code
-- `jq` (`brew install jq` or `apt install jq`)
-- `python3`
-- `curl` (for weather)
+[→ 交互式课程说明](https://li-mingshuang.github.io/claude-context-injector/docs/course.html)
 
-## Install
+## 安装（推荐：Skill 方式）
 
 ```bash
 git clone https://github.com/Li-Mingshuang/claude-context-injector
+cp -r claude-context-injector/skill ~/.claude/skills/context-injector
+```
+
+然后在 Claude Code 里说：
+
+```
+context-injector
+```
+
+Claude 会自动完成 hook 注册和配置，**重启 Claude Code 后生效**。
+
+## 安装（备选：手动脚本）
+
+```bash
 cd claude-context-injector
 bash install.sh
 ```
 
-Restart Claude Code. Done.
+## 支持的注入源
 
-## Configure
+| 来源 | 示例 | 默认 |
+|---|---|---|
+| `time` | `Current time: 2026-06-13 22:34 CST` | ✅ 开 |
+| `weather` | `Weather: Beijing: ⛅️ +28°C` | 关 |
+| `git` | `Git: branch=main (3 uncommitted changes)` | ✅ 开 |
+| `battery` | `Battery: 82% discharging` | 关 |
+| `cwd` | `Working directory: /Users/you/project` | 关 |
+| 自定义 | 任意 shell 命令的输出 | — |
 
-Edit `~/.claude-context-injector/config.json`:
+## 配置
 
-```json
-{
-  "time": true,
-  "weather": true,
-  "weather_location": "Beijing",
-  "git": true,
-  "battery": false,
-  "cwd": false
-}
+通过 Skill 交互式管理，或直接编辑 `~/.claude-context-injector/config.json`。
+
+## 项目结构
+
+```
+skill/
+├── SKILL.md          # Claude Code skill，包含安装、配置、管理的完整逻辑
+└── bin/
+    └── gather.sh     # UserPromptSubmit hook 调用的采集脚本
+docs/
+└── course.html       # 交互式课程说明页
+install.sh            # 不使用 skill 时的备用安装脚本
 ```
 
-`weather_location` can be a city name, airport code, or coordinates. Leave empty for auto-detect by IP.
+## 要求
 
-## How it works
-
-`install.sh` adds a `UserPromptSubmit` hook to `~/.claude/settings.json`:
-
-```json
-{
-  "hooks": {
-    "UserPromptSubmit": [{
-      "hooks": [{
-        "type": "command",
-        "command": "bash ~/.claude-context-injector/gather.sh"
-      }]
-    }]
-  }
-}
-```
-
-Every time you send a message, `gather.sh` runs, collects enabled data sources, and outputs a JSON blob that Claude Code injects as `additionalContext` — so Claude sees it as part of the conversation context before generating a response.
-
-## Uninstall
-
-```bash
-bash uninstall.sh
-```
-
-## Extending
-
-Add a new source to `gather.sh`:
-
-```bash
-# ── Your custom source ────────────────────────────────────────────────────────
-if [ "$(get_config my_source)" = "true" ]; then
-  DATA=$(your-command-here)
-  [ -n "$DATA" ] && LINES+=("My source: $DATA")
-fi
-```
-
-Add the toggle to `config.json`:
-```json
-{ "my_source": true }
-```
+- Claude Code
+- `jq`（`brew install jq`）
+- `python3`
+- `curl`（天气功能）
 
 ## License
 
