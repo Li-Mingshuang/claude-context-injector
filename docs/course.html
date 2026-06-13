@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>claude-context-injector — 技能课程</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&family=Noto+Sans+SC:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #FAF8F5;
+      --bg-alt: #F2EFE9;
+      --text: #2C2825;
+      --text-muted: #7A7269;
+      --accent: #C97B1A;
+      --accent-light: rgba(201,123,26,0.12);
+      --code-bg: #1E1E2E;
+      --card-shadow: 0 2px 12px rgba(44,40,37,0.08);
+      --radius: 12px;
+      --font-display: 'Noto Serif SC', serif;
+      --font-body: 'Noto Sans SC', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { background: var(--bg); color: var(--text); font-family: var(--font-body); font-size: 16px; line-height: 1.7; }
+
+    .nav-sidebar { position: fixed; right: 24px; top: 50%; transform: translateY(-50%); z-index: 100; display: flex; flex-direction: column; gap: 10px; }
+    .nav-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--text-muted); opacity: 0.3; cursor: pointer; border: none; transition: all 0.3s ease; position: relative; }
+    .nav-dot.active { opacity: 1; background: var(--accent); transform: scale(1.4); }
+    .nav-dot:hover { opacity: 0.7; }
+    .nav-dot::after { content: attr(data-label); position: absolute; right: 18px; top: 50%; transform: translateY(-50%); background: var(--text); color: #fff; font-family: var(--font-body); font-size: 12px; padding: 3px 8px; border-radius: 4px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+    .nav-dot:hover::after { opacity: 1; }
+
+    .module { min-height: 100vh; padding: 80px 48px; display: flex; flex-direction: column; justify-content: center; max-width: 960px; margin: 0 auto; opacity: 0; transform: translateY(24px); transition: opacity 0.6s ease, transform 0.6s ease; }
+    .module.visible { opacity: 1; transform: translateY(0); }
+    .module:nth-child(even) { background: var(--bg-alt); max-width: 100%; padding: 80px calc(50% - 432px); }
+
+    .module-tag { font-size: 13px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); margin-bottom: 12px; }
+    .module-title { font-family: var(--font-display); font-size: clamp(28px, 4vw, 48px); font-weight: 700; line-height: 1.2; margin-bottom: 20px; }
+    .module-subtitle { font-size: 18px; color: var(--text-muted); margin-bottom: 40px; max-width: 600px; }
+
+    .cards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin: 32px 0; }
+    .card { background: #fff; border-radius: var(--radius); padding: 24px; box-shadow: var(--card-shadow); border-left: 4px solid var(--accent); transition: transform 0.2s, box-shadow 0.2s; }
+    .card:hover { transform: translateY(-3px); box-shadow: 0 6px 24px rgba(44,40,37,0.12); }
+    .card-icon { font-size: 28px; margin-bottom: 12px; }
+    .card-title { font-weight: 700; margin-bottom: 6px; }
+    .card-desc { font-size: 14px; color: var(--text-muted); }
+
+    .trigger-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .trigger-tag { background: var(--accent-light); color: var(--accent); padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: 500; }
+
+    .chat-container { background: #fff; border-radius: var(--radius); padding: 24px; max-width: 580px; box-shadow: var(--card-shadow); }
+    .chat-bubble { display: flex; gap: 12px; margin-bottom: 16px; opacity: 0; transform: translateX(-12px); transition: opacity 0.4s ease, transform 0.4s ease; }
+    .chat-bubble.right { flex-direction: row-reverse; transform: translateX(12px); }
+    .chat-bubble.show { opacity: 1; transform: translateX(0); }
+    .bubble-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--accent-light); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+    .bubble-text { background: var(--bg-alt); border-radius: 16px; padding: 10px 16px; font-size: 14px; max-width: 80%; }
+    .chat-bubble.right .bubble-text { background: var(--accent); color: #fff; }
+    .bubble-label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; font-weight: 600; }
+
+    .side-by-side { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border-radius: var(--radius); overflow: hidden; box-shadow: var(--card-shadow); margin: 32px 0; }
+    .side-col { padding: 0; }
+    .side-header { padding: 12px 20px; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+    .side-col:first-child .side-header { background: var(--code-bg); color: #a6adc8; }
+    .side-col:last-child .side-header { background: var(--accent); color: #fff; }
+    .side-cell { padding: 16px 20px; font-size: 14px; border-bottom: 1px solid rgba(44,40,37,0.06); }
+    .side-col:first-child .side-cell { background: #252535; color: #cdd6f4; font-family: var(--font-mono); font-size: 13px; }
+    .side-col:last-child .side-cell { background: #fff; color: var(--text); }
+
+    .flow-steps { display: flex; flex-direction: column; gap: 0; margin: 32px 0; position: relative; }
+    .flow-steps::before { content: ''; position: absolute; left: 20px; top: 20px; bottom: 20px; width: 2px; background: var(--accent-light); }
+    .flow-step { display: flex; gap: 16px; align-items: flex-start; padding: 16px 0; opacity: 0; transform: translateX(-16px); transition: opacity 0.5s ease, transform 0.5s ease; }
+    .flow-step.show { opacity: 1; transform: translateX(0); }
+    .step-num { width: 40px; height: 40px; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; position: relative; z-index: 1; }
+    .step-content { padding-top: 6px; }
+    .step-title { font-weight: 700; margin-bottom: 4px; }
+    .step-desc { font-size: 14px; color: var(--text-muted); }
+
+    .tool-chain { display: flex; align-items: center; gap: 0; flex-wrap: wrap; margin: 32px 0; }
+    .tool-node { background: #fff; border: 2px solid var(--accent); border-radius: 8px; padding: 10px 16px; font-size: 13px; font-weight: 600; white-space: nowrap; opacity: 0; transition: opacity 0.4s ease; }
+    .tool-node.show { opacity: 1; }
+    .tool-arrow { color: var(--accent); font-size: 20px; padding: 0 8px; opacity: 0; transition: opacity 0.4s ease 0.2s; }
+    .tool-arrow.show { opacity: 1; }
+
+    .tool-notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 24px; }
+    .tool-note { background: #fff; border-radius: 8px; padding: 16px; font-size: 13px; box-shadow: var(--card-shadow); }
+    .tool-note strong { display: block; margin-bottom: 4px; color: var(--accent); }
+    .tool-note span { color: var(--text-muted); }
+
+    .io-example { display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; align-items: center; background: #fff; border-radius: var(--radius); padding: 24px; box-shadow: var(--card-shadow); margin: 16px 0; }
+    .io-box { background: var(--bg-alt); border-radius: 8px; padding: 16px; font-size: 14px; }
+    .io-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .io-label.input { color: #7A7269; }
+    .io-label.output { color: var(--accent); }
+    .io-arrow { font-size: 24px; color: var(--accent); text-align: center; }
+
+    .code-block { background: var(--code-bg); border-radius: 8px; padding: 16px 20px; font-family: var(--font-mono); font-size: 13px; color: #cdd6f4; overflow-x: auto; margin: 16px 0; line-height: 1.6; }
+    .code-comment { color: #6c7086; }
+    .code-keyword { color: #cba6f7; }
+    .code-string { color: #a6e3a1; }
+    .code-var { color: #89b4fa; }
+
+    .quiz-block { background: #fff; border-radius: var(--radius); padding: 28px; box-shadow: var(--card-shadow); margin: 20px 0; }
+    .quiz-question { font-weight: 700; font-size: 17px; margin-bottom: 20px; line-height: 1.5; }
+    .quiz-options { display: flex; flex-direction: column; gap: 10px; }
+    .quiz-option { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border: 2px solid var(--bg-alt); border-radius: 8px; cursor: pointer; transition: all 0.2s; font-size: 14px; }
+    .quiz-option:hover { border-color: var(--accent); background: var(--accent-light); }
+    .quiz-option.correct { border-color: #2E8B72; background: #f0faf7; }
+    .quiz-option.wrong { border-color: #E05C4B; background: #fdf3f2; }
+    .quiz-opt-label { font-weight: 700; color: var(--accent); width: 20px; flex-shrink: 0; }
+    .quiz-feedback { margin-top: 16px; padding: 12px 16px; border-radius: 8px; font-size: 14px; display: none; }
+    .quiz-feedback.show { display: block; }
+    .quiz-feedback.correct { background: #f0faf7; color: #2E8B72; border-left: 4px solid #2E8B72; }
+    .quiz-feedback.wrong { background: #fdf3f2; color: #E05C4B; border-left: 4px solid #E05C4B; }
+
+    .term { border-bottom: 1px dashed var(--accent); cursor: help; position: relative; }
+    .term::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: var(--text); color: #fff; font-size: 12px; padding: 6px 10px; border-radius: 6px; white-space: normal; max-width: 220px; text-align: center; opacity: 0; pointer-events: none; transition: opacity 0.2s; z-index: 200; }
+    .term:hover::after { opacity: 1; }
+
+    .progress-bar { position: fixed; top: 0; left: 0; height: 3px; background: var(--accent); transition: width 0.2s ease; z-index: 200; }
+
+    .context-demo { background: var(--code-bg); border-radius: var(--radius); padding: 20px 24px; margin: 24px 0; font-family: var(--font-mono); font-size: 13px; }
+    .context-line { color: #a6e3a1; padding: 3px 0; opacity: 0; transform: translateX(-8px); transition: all 0.4s ease; }
+    .context-line.show { opacity: 1; transform: translateX(0); }
+    .context-label { color: #6c7086; font-size: 11px; margin-bottom: 8px; }
+
+    .cta-block { background: var(--accent-light); border-radius: var(--radius); padding: 28px; margin-top: 40px; border-left: 4px solid var(--accent); }
+    .cta-block strong { display: block; font-size: 18px; margin-bottom: 12px; color: var(--accent); }
+
+    @media (max-width: 640px) {
+      .module { padding: 60px 20px; }
+      .side-by-side { grid-template-columns: 1fr; }
+      .io-example { grid-template-columns: 1fr; }
+      .io-arrow { transform: rotate(90deg); }
+      .nav-sidebar { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="progress-bar" id="progress"></div>
+
+<nav class="nav-sidebar" id="nav"></nav>
+
+<!-- ==================== 模块 1：能做什么 ==================== -->
+<section class="module" id="module-1">
+  <div class="module-tag">🎯 第一章</div>
+  <h1 class="module-title">Claude 终于知道<br>你现在的处境了</h1>
+  <p class="module-subtitle">
+    每次对话，Claude 自动拿到你的时间、天气、Git 状态——不用你说，它已经知道了。
+  </p>
+
+  <div class="cards-grid">
+    <div class="card">
+      <div class="card-icon">🕐</div>
+      <div class="card-title">时间感知</div>
+      <div class="card-desc">不再说"现在几点"——Claude 每条消息都知道当前时间，回答"今晚合适吗"时有参照</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">🌤️</div>
+      <div class="card-title">实时天气</div>
+      <div class="card-desc">随口问"今天出门带伞吗"——当地天气已自动注入，无需你说城市</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">🌿</div>
+      <div class="card-title">Git 状态</div>
+      <div class="card-desc">让 Claude 帮你提交代码，它已知道当前分支和未提交变更数量</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">🔋</div>
+      <div class="card-title">电量 / 目录</div>
+      <div class="card-desc">可选开启电量显示和当前工作目录，多项目切换时不混淆</div>
+    </div>
+  </div>
+
+  <p style="font-size:13px; color:var(--text-muted); margin-top:8px;">你会感觉到它，如果你经常：</p>
+  <div class="trigger-tags">
+    <span class="trigger-tag">每次先解释一遍背景</span>
+    <span class="trigger-tag">问当前时间/日期</span>
+    <span class="trigger-tag">让 AI 帮提交代码</span>
+    <span class="trigger-tag">在多个项目间切换</span>
+    <span class="trigger-tag">随口问天气</span>
+  </div>
+</section>
+
+<!-- ==================== 模块 2：怎么触发 ==================== -->
+<section class="module" id="module-2">
+  <div class="module-tag">💬 第二章</div>
+  <h2 class="module-title">装了之后<br>什么都不用说</h2>
+  <p class="module-subtitle">你还是正常说话，它已经在后台悄悄工作了</p>
+
+  <div class="chat-container" id="trigger-chat"></div>
+
+  <p style="font-size:13px; color:var(--text-muted); margin-top:28px;">无需特殊触发词，一切对话都自动注入上下文：</p>
+  <div class="trigger-tags" style="margin-top:8px;">
+    <span class="trigger-tag">帮我提交代码</span>
+    <span class="trigger-tag">今天适合出门吗</span>
+    <span class="trigger-tag">现在几点了</span>
+    <span class="trigger-tag">帮我写个日报</span>
+    <span class="trigger-tag">检查一下这个函数</span>
+  </div>
+
+  <div style="margin-top: 32px;">
+    <p style="font-size: 14px; color: var(--text-muted); margin-bottom: 12px;">Claude 在处理你的消息前，已经悄悄收到了这些：</p>
+    <div class="context-demo" id="context-demo">
+      <div class="context-label">// additionalContext 注入内容</div>
+      <div class="context-line" id="ctx-1">Current time: 2026-06-13 22:34:51 CST</div>
+      <div class="context-line" id="ctx-2">Weather: Beijing: ⛅️ +28°C</div>
+      <div class="context-line" id="ctx-3">Git: branch=main (3 uncommitted changes)</div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 模块 3：幕后原理 ==================== -->
+<section class="module" id="module-3">
+  <div class="module-tag">⚙️ 第三章</div>
+  <h2 class="module-title">你开口的瞬间<br>发生了什么？</h2>
+  <p class="module-subtitle">从你按下回车到 Claude 读到上下文，中间只有几十毫秒</p>
+
+  <div class="flow-steps" id="flow">
+    <div class="flow-step">
+      <div class="step-num">1</div>
+      <div class="step-content">
+        <div class="step-title">你按下发送</div>
+        <div class="step-desc">
+          就在这一刻，Claude Code 的
+          <span class="term" data-tip="UserPromptSubmit：用户提交消息时触发的钩子，可在消息被处理前运行自定义脚本">UserPromptSubmit hook</span>
+          悄悄被触发了——就像古代击鼓传令兵，在你的话真正传出去之前，先跑了一圈收情报
+        </div>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">2</div>
+      <div class="step-content">
+        <div class="step-title">gather.sh 多路采集</div>
+        <div class="step-desc">
+          像一座自动气象站，
+          <span class="term" data-tip="gather.sh：核心采集脚本，并行读取多个数据源并汇总成一段文字">gather.sh</span>
+          同时启动所有启用的传感器：读系统时间、查 wttr.in 天气、问 git 分支状态
+        </div>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">3</div>
+      <div class="step-content">
+        <div class="step-title">config.json 决定采集什么</div>
+        <div class="step-desc">
+          <span class="term" data-tip="config.json：配置文件，每个开关对应一个数据源，true=开启，false=关闭">config.json</span>
+          就是驾驶舱仪表盘——哪个指示灯是亮的，gather.sh 就采集哪路数据，天气默认关闭减少延迟
+        </div>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">4</div>
+      <div class="step-content">
+        <div class="step-title">打包成 JSON 注入</div>
+        <div class="step-desc">
+          采集到的信息被组装成一段 JSON，告诉 Claude Code 把它放进
+          <span class="term" data-tip="additionalContext：额外上下文字段，Claude 会在生成回复前先读到这段内容">additionalContext</span>
+          ——就像导演在演员上场前悄悄塞一张小纸条：「今晚是周五，下雨，她刚失业」
+        </div>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">5</div>
+      <div class="step-content">
+        <div class="step-title">Claude 生成回复</div>
+        <div class="step-desc">
+          Claude 读到你的消息时，这些上下文已经在了。它知道现在几点、你在哪个分支、外面什么天气，然后才开始回答你
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="side-by-side">
+    <div class="side-col">
+      <div class="side-header">⚙️ 技术描述</div>
+      <div class="side-cell">UserPromptSubmit hook fires on message submit</div>
+      <div class="side-cell">bash gather.sh reads config.json + runs subcommands</div>
+      <div class="side-cell">curl wttr.in?format=3 with 3s timeout</div>
+      <div class="side-cell">Output JSON: hookSpecificOutput.additionalContext</div>
+      <div class="side-cell">Claude Code injects context before LLM call</div>
+    </div>
+    <div class="side-col">
+      <div class="side-header">🌏 通俗中文</div>
+      <div class="side-cell">你发消息的瞬间，一个钩子被悄悄拉起来</div>
+      <div class="side-cell">脚本读配置文件，决定要采集哪些信息</div>
+      <div class="side-cell">用 curl 问 wttr.in 天气，3秒内没答就跳过</div>
+      <div class="side-cell">把信息打包成 JSON，告诉 Claude Code 注进去</div>
+      <div class="side-cell">Claude 读消息前，上下文已经在了</div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 模块 4：工具链 ==================== -->
+<section class="module" id="module-4">
+  <div class="module-tag">🔧 第四章</div>
+  <h2 class="module-title">背后用了<br>哪些工具？</h2>
+  <p class="module-subtitle">全是系统原生工具，无需额外安装，零云端依赖</p>
+
+  <div class="tool-chain" id="tool-chain">
+    <div class="tool-node">👤 你发消息</div>
+    <div class="tool-arrow">→</div>
+    <div class="tool-node">🪝 CC Hook</div>
+    <div class="tool-arrow">→</div>
+    <div class="tool-node">📜 gather.sh</div>
+    <div class="tool-arrow">→</div>
+    <div class="tool-node">⚙️ config.json</div>
+    <div class="tool-arrow">→</div>
+    <div class="tool-node">🌐 wttr.in</div>
+    <div class="tool-arrow">→</div>
+    <div class="tool-node">📦 JSON 注入</div>
+    <div class="tool-arrow">→</div>
+    <div class="tool-node">🤖 Claude</div>
+  </div>
+
+  <div class="tool-notes">
+    <div class="tool-note">
+      <strong>🪝 UserPromptSubmit</strong>
+      <span>击鼓传令兵 — 在你的话真正发出前，先跑一圈外面收好情报再进来</span>
+    </div>
+    <div class="tool-note">
+      <strong>📜 gather.sh</strong>
+      <span>自动气象站 — 多个传感器同时工作，统一上报给调度中心</span>
+    </div>
+    <div class="tool-note">
+      <strong>⚙️ config.json</strong>
+      <span>驾驶舱仪表盘 — 哪个指示灯是亮的，就采集哪路数据</span>
+    </div>
+    <div class="tool-note">
+      <strong>🌐 wttr.in</strong>
+      <span>免费天气终端 — 只需 curl 一行，世界任何城市的天气都能拿到，无需 API key</span>
+    </div>
+    <div class="tool-note">
+      <strong>📦 additionalContext</strong>
+      <span>上场前的小纸条 — 导演在演员出场前塞给他的背景信息，让他立刻进入状态</span>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 模块 5：输入输出 ==================== -->
+<section class="module" id="module-5">
+  <div class="module-tag">📦 第五章</div>
+  <h2 class="module-title">真实的效果<br>是什么样的？</h2>
+  <p class="module-subtitle">三个典型场景，before / after 对比</p>
+
+  <div class="io-example">
+    <div class="io-box">
+      <div class="io-label input">❌ 没装之前</div>
+      帮我提交代码<br>
+      <span style="color:var(--text-muted); font-size:13px;">（Claude：你在哪个分支？有什么改动？）</span>
+    </div>
+    <div class="io-arrow">→</div>
+    <div class="io-box">
+      <div class="io-label output">✅ 装了之后</div>
+      帮我提交代码<br>
+      <span style="color:var(--text-muted); font-size:13px;">（Claude 已知：branch=main，3个未提交文件，直接开始写 commit message）</span>
+    </div>
+  </div>
+
+  <div class="io-example">
+    <div class="io-box">
+      <div class="io-label input">❌ 没装之前</div>
+      今天晚上适合跑步吗<br>
+      <span style="color:var(--text-muted); font-size:13px;">（Claude：你在哪个城市？现在几点？）</span>
+    </div>
+    <div class="io-arrow">→</div>
+    <div class="io-box">
+      <div class="io-label output">✅ 装了之后</div>
+      今天晚上适合跑步吗<br>
+      <span style="color:var(--text-muted); font-size:13px;">（Claude 已知：Beijing ⛅️ 28°C，22:34，直接回答适不适合）</span>
+    </div>
+  </div>
+
+  <div class="io-example">
+    <div class="io-box">
+      <div class="io-label input">🔧 config.json 开启天气</div>
+      <div class="code-block" style="margin:0; font-size:12px;">{<br>
+  &nbsp;&nbsp;"time": true,<br>
+  &nbsp;&nbsp;"weather": <span class="code-string">true</span>,<br>
+  &nbsp;&nbsp;"weather_location": <span class="code-string">"Beijing"</span>,<br>
+  &nbsp;&nbsp;"git": true,<br>
+  &nbsp;&nbsp;"battery": <span class="code-keyword">false</span><br>
+}</div>
+    </div>
+    <div class="io-arrow">→</div>
+    <div class="io-box">
+      <div class="io-label output">注入效果</div>
+      Current time: 2026-06-13 22:34 CST<br>
+      Weather: Beijing: ⛅️ +28°C<br>
+      Git: branch=main (3 uncommitted changes)
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 模块 6：测验 ==================== -->
+<section class="module" id="module-6">
+  <div class="module-tag">🧪 第六章</div>
+  <h2 class="module-title">测一测<br>你会用了吗</h2>
+  <p class="module-subtitle">不是记忆题，是你真的遇到这种情况怎么办</p>
+
+  <div class="quiz-block">
+    <div class="quiz-question">
+      📋 你装好了 claude-context-injector，但每次和 Claude 说话，它还是不知道你在哪个 Git 分支。你检查了 config.json，发现是这样的：<br>
+      <code style="font-family: var(--font-mono); font-size:14px; background: var(--bg-alt); padding: 2px 6px; border-radius:4px;">{"time": true, "git": false, "weather": false}</code><br>
+      问题出在哪，怎么修？
+    </div>
+    <div class="quiz-options">
+      <div class="quiz-option" data-correct="0">
+        <span class="quiz-opt-label">A</span>
+        重新运行 install.sh，重装一次
+      </div>
+      <div class="quiz-option" data-correct="1">
+        <span class="quiz-opt-label">B</span>
+        把 <code>"git": false</code> 改成 <code>"git": true</code>，保存后重启 Claude Code
+      </div>
+      <div class="quiz-option" data-correct="0">
+        <span class="quiz-opt-label">C</span>
+        每次对话前手动告诉 Claude 分支名
+      </div>
+    </div>
+    <div class="quiz-feedback"
+      data-right="对！config.json 是开关面板，git 被设为 false 就不会采集。改成 true，保存，重启 Claude Code 即可生效。"
+      data-wrong="根本原因是 config.json 里 git 被关掉了（false）。重装不会改变这个配置。直接编辑配置文件是最快的解法。">
+    </div>
+  </div>
+
+  <div class="quiz-block">
+    <div class="quiz-question">
+      🌤️ 你开启了天气功能，但发现每次发消息都要多等 3 秒，因为 wttr.in 有时响应很慢。你怎么既保留天气功能，又减少等待？
+    </div>
+    <div class="quiz-options">
+      <div class="quiz-option" data-correct="0">
+        <span class="quiz-opt-label">A</span>
+        把 weather 设为 false，彻底关掉天气
+      </div>
+      <div class="quiz-option" data-correct="0">
+        <span class="quiz-opt-label">B</span>
+        没办法，天气就是慢
+      </div>
+      <div class="quiz-option" data-correct="1">
+        <span class="quiz-opt-label">C</span>
+        在 gather.sh 里降低 curl 的超时时间（当前是 3 秒），比如改为 1 秒，超时就跳过
+      </div>
+    </div>
+    <div class="quiz-feedback"
+      data-right="对！gather.sh 里有 --max-time 3 参数控制超时，改成 --max-time 1 即可。网络好时正常获取，网络差时 1 秒跳过，不影响其他数据源。"
+      data-wrong="gather.sh 里的 curl --max-time 3 就是超时控制。降低这个数字，网络慢时会更快跳过天气，其他数据源不受影响。">
+    </div>
+  </div>
+
+  <div class="quiz-block">
+    <div class="quiz-question">
+      🔧 你想给 gather.sh 加一个新功能：注入当前系统内存使用率。你会怎么做？
+    </div>
+    <div class="quiz-options">
+      <div class="quiz-option" data-correct="0">
+        <span class="quiz-opt-label">A</span>
+        等作者更新版本，这不是自己能加的功能
+      </div>
+      <div class="quiz-option" data-correct="1">
+        <span class="quiz-opt-label">B</span>
+        在 gather.sh 里仿照现有数据源加几行，在 config.json 里加对应的开关
+      </div>
+      <div class="quiz-option" data-correct="0">
+        <span class="quiz-opt-label">C</span>
+        修改 ~/.claude/settings.json 里的 hook 命令
+      </div>
+    </div>
+    <div class="quiz-feedback"
+      data-right="对！gather.sh 就是为扩展设计的——每个数据源都是独立的几行代码，加新的和加现有的完全一样。README 里有 Extending 章节专门说明这个。"
+      data-wrong="gather.sh 的结构就是为了方便扩展。每个数据源是独立的 if 块，照着现有的复制一份改一改就行。hook 命令不需要改，它只是调用 gather.sh。">
+    </div>
+  </div>
+
+  <div class="cta-block">
+    <strong>🎉 你现在知道了…</strong>
+    <p>claude-context-injector 把"每次先说背景"变成了自动发生的事。Hook 触发、脚本采集、JSON 注入、Claude 感知——整个过程在你按下回车后的几十毫秒内完成。</p>
+    <p style="margin-top:8px;">
+      想试试？
+      <code style="background: var(--bg); padding: 2px 8px; border-radius: 4px; font-family: var(--font-mono); font-size: 13px;">git clone https://github.com/Li-Mingshuang/claude-context-injector && bash install.sh</code>
+    </p>
+  </div>
+</section>
+
+<script>
+  const modules = document.querySelectorAll('.module');
+  const nav = document.getElementById('nav');
+  const LABELS = ['能做什么', '怎么触发', '幕后原理', '工具链', '使用示例', '测验'];
+
+  modules.forEach((mod, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'nav-dot' + (i === 0 ? ' active' : '');
+    btn.dataset.target = mod.id;
+    btn.dataset.label = LABELS[i] || `第${i+1}章`;
+    btn.addEventListener('click', () => mod.scrollIntoView({ behavior: 'smooth' }));
+    nav.appendChild(btn);
+  });
+
+  const progress = document.getElementById('progress');
+  function updateProgress() {
+    const pct = window.scrollY / (document.documentElement.scrollHeight - window.innerHeight) * 100;
+    progress.style.width = Math.min(pct, 100) + '%';
+  }
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      entry.target.classList.add('visible');
+
+      const id = entry.target.id;
+      document.querySelectorAll('.nav-dot').forEach(dot => {
+        dot.classList.toggle('active', dot.dataset.target === id);
+      });
+
+      if (id === 'module-2') {
+        // 对话气泡已由 initSkillData 生成，延迟触发
+        setTimeout(() => {
+          document.querySelectorAll('#trigger-chat .chat-bubble').forEach((el, i) => {
+            setTimeout(() => el.classList.add('show'), i * 700 + 200);
+          });
+          // 上下文 demo
+          ['ctx-1','ctx-2','ctx-3'].forEach((cid, i) => {
+            const el = document.getElementById(cid);
+            if (el) setTimeout(() => el.classList.add('show'), i * 400 + 1800);
+          });
+        }, 100);
+      }
+
+      if (id === 'module-3') {
+        document.querySelectorAll('.flow-step').forEach((step, i) => {
+          setTimeout(() => step.classList.add('show'), i * 220);
+        });
+      }
+
+      if (id === 'module-4') {
+        document.querySelectorAll('.tool-node, .tool-arrow').forEach((el, i) => {
+          setTimeout(() => el.classList.add('show'), i * 130);
+        });
+      }
+    });
+  }, { threshold: 0.2 });
+
+  modules.forEach(m => observer.observe(m));
+  window.addEventListener('scroll', updateProgress);
+
+  function animateChat(containerId, bubbles) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    bubbles.forEach((b) => {
+      const div = document.createElement('div');
+      div.className = 'chat-bubble' + (b.right ? ' right' : '');
+      div.innerHTML = `
+        <div class="bubble-avatar">${b.avatar}</div>
+        <div>
+          <div class="bubble-label">${b.label}</div>
+          <div class="bubble-text">${b.text}</div>
+        </div>`;
+      container.appendChild(div);
+    });
+  }
+
+  document.querySelectorAll('.quiz-option').forEach(opt => {
+    opt.addEventListener('click', () => {
+      const block = opt.closest('.quiz-block');
+      if (block.dataset.answered) return;
+      block.dataset.answered = '1';
+      const isCorrect = opt.dataset.correct === '1';
+      opt.classList.add(isCorrect ? 'correct' : 'wrong');
+      if (!isCorrect) block.querySelector('[data-correct="1"]').classList.add('correct');
+      const fb = block.querySelector('.quiz-feedback');
+      if (fb) {
+        fb.classList.add('show', isCorrect ? 'correct' : 'wrong');
+        fb.textContent = isCorrect ? '✅ ' + fb.dataset.right : '❌ ' + fb.dataset.wrong;
+      }
+    });
+  });
+
+  function initSkillData() {
+    animateChat('trigger-chat', [
+      { avatar: '👤', label: '你', text: '帮我把刚才的改动提交一下' },
+      { avatar: '🤖', label: 'Claude', right: true, text: '好，我看到你在 main 分支，有 3 个未提交的文件：auth.ts、index.ts、types.ts' },
+      { avatar: '🤖', label: 'Claude', right: true, text: 'commit message 建议：feat: add token refresh logic — 要用这个吗？' },
+      { avatar: '👤', label: '你', text: '改成"fix: handle expired session redirect"' },
+      { avatar: '🤖', label: 'Claude', right: true, text: '已提交 ✅  commit 6d3a2f1' },
+    ]);
+  }
+
+  updateProgress();
+  if (typeof initSkillData === 'function') initSkillData();
+</script>
+</body>
+</html>
