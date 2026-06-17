@@ -13,7 +13,7 @@ LINES=()
 
 # ── Time ──────────────────────────────────────────────────────────────────────
 if [ "$(get_config time)" = "true" ]; then
-  LINES+=("Current time: $(date '+%Y-%m-%d %H:%M:%S %Z')")
+  LINES+=("[HOOK注入] 当前系统时间: $(date '+%Y-%m-%d %H:%M:%S %Z')")
 fi
 
 # ── Weather (wttr.in, free, no API key) ───────────────────────────────────────
@@ -31,7 +31,7 @@ if [ "$(get_config git)" = "true" ]; then
     DIRTY=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')
     STATUS=""
     [ "$DIRTY" -gt 0 ] && STATUS=" (${DIRTY} uncommitted changes)"
-    LINES+=("Git: branch=${BRANCH}${STATUS}")
+    LINES+=("[HOOK注入] Git: branch=${BRANCH}${STATUS}")
   fi
 fi
 
